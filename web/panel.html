@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if eq .Service "gateway"}}Шлюз 2FA{{else}}{{.ModuleTitle}}{{end}} · Настройки EngMCP</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/panel.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap masthead-inner">
+      <div class="brand"><b aria-hidden="true">E</b> EngMCP</div>
+      <span class="server">Локальный сервер <code>v{{.Version}}</code></span>
+    </div>
+  </header>
+  <main class="wrap">
+    <h1>Настройки интеграций</h1>
+    <nav aria-label="Настройки интеграций">
+      {{range .Catalogue}}<a href="{{$.Path}}?service={{.ID}}" {{if eq $.Service .ID}}aria-current="page"{{end}}>{{shortTitle .}}</a>{{end}}
+      {{if .HasGateway}}<a href="{{.Path}}?service=gateway" {{if eq .Service "gateway"}}aria-current="page"{{end}}>Шлюз 2FA</a>{{end}}
+    </nav>
+    <div class="workspace">
+      <div class="editor">
+        {{if .Saved}}<p class="notice" role="status">Настройки сохранены.</p>{{end}}
+        {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+        {{if .Failure}}<p class="error" role="alert">{{.Failure}}</p>{{end}}
+
+        <form id="settings" method="post" action="{{.Path}}save">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="revision" value="{{.Revision}}">
+          <input type="hidden" name="service" value="{{.Service}}">
+          {{if eq .Service "gateway"}}
+          <section>
+            <h2>NetScaler nFactor</h2>
+            <p class="hint">Один профиль для Jira и Confluence. Режим подключения выбирается на вкладке каждого сервиса.</p>
+            <div class="fields">
+              <label class="field">HTTPS-адрес шлюза
+                <input type="url" name="gateway_url" value="{{.Gateway.URL}}" placeholder="https://mfa.example.org">
+              </label>
+              <label class="field">Логин шлюза
+                <input name="user" value="{{.Gateway.User}}" autocomplete="off">
+              </label>
+              <label class="field">Пароль шлюза
+                <input name="password" type="password" autocomplete="new-password" placeholder="{{if .Gateway.Password}}********{{end}}">
+              </label>
+              <label class="field">TOTP-секрет (Base32)
+                <input name="seed" type="password" autocomplete="new-password" aria-describedby="totp-hint" placeholder="{{if .Gateway.Seed}}********{{end}}">
+              </label>
+            </div>
+            <p class="hint" id="totp-hint">Введи постоянный ключ настройки аутентификатора. Одноразовые коды генерируются при входе.</p>
+          </section>
+          {{else}}
+          <section>
+            <div class="section-head">
+              <h2>{{.ModuleTitle}}</h2>
+              <label class="toggle">
+                <input type="checkbox" name="enabled" {{if .Cfg.Enabled}}checked{{end}}> Включить модуль
+              </label>
+            </div>
+            <div class="fields">
+              <label class="field">Адрес {{.ShortTitle}}
+                <input type="url" name="url" value="{{.Cfg.BaseURL}}" placeholder="https://service.example.org" autocomplete="off">
+              </label>
+              {{if and .SupportsGateway (or .HasGateway (eq .Cfg.Mode "gateway"))}}
+              <label class="field">Режим подключения
+                <select name="mode">
+                  <option value="direct" {{if eq .Cfg.Mode "direct"}}selected{{end}}>Напрямую из рабочей сети</option>
+                  <option value="gateway" {{if eq .Cfg.Mode "gateway"}}selected{{end}}>Через шлюз NetScaler (2FA)</option>
+                </select>
+                {{if not .HasGateway}}<small>Компонент шлюза отсутствует. Установи его или выбери прямое подключение.</small>{{end}}
+              </label>
+              {{end}}
+              {{if eq .Service "jenkins"}}
+              <label class="field">Имя пользователя Jenkins
+                <input name="username" value="{{.Cfg.Username}}" autocomplete="off">
+              </label>
+              {{end}}
+              <label class="field">{{if or (eq .Service "jenkins") (eq .Service "allure")}}API-токен {{.ShortTitle}}{{else}}Персональный токен (PAT){{end}}
+                <input type="password" name="pat" autocomplete="new-password" placeholder="{{if .HasPAT}}********{{else}}Введи токен сервиса{{end}}">
+              </label>
+            </div>
+            <fieldset>
+              <legend>Разрешённые операции</legend>
+              <p class="hint">Эти права действуют для всех подключённых MCP-клиентов.</p>
+              <div class="ops">
+                {{range .Ops}}
+                  <label>
+                    <input type="checkbox" name="{{.Name}}" {{if index $.Cfg.Allowed .Name}}checked{{end}}>
+                    <span>{{.Title}}<small>{{.Name}}</small></span>
+                  </label>
+                {{end}}
+              </div>
+            </fieldset>
+          </section>
+          {{end}}
+          <section class="journal">
+            <div>
+              <h2>Локальный журнал</h2>
+              <p class="hint"><code>{{.Logs}}</code></p>
+            </div>
+            <label class="field">Срок хранения, дни
+              <input type="number" min="1" max="3650" required name="days" value="{{.Retention}}">
+            </label>
+          </section>
+        </form>
+        <div class="actions">
+          <button type="submit" form="settings">Сохранить настройки</button>
+          {{if ne .Service "gateway"}}
+          <form method="post" action="{{.Path}}check">
+            <input type="hidden" name="service" value="{{.Service}}">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button class="secondary" type="submit">Проверить сохранённое подключение</button>
+          </form>
+          {{end}}
+        </div>
+      </div>
+      <aside class="client-guide" aria-labelledby="clients-title">
+        <h2 id="clients-title">Подключение клиентов</h2>
+        <details>
+          <summary>Codex Desktop</summary>
+          <p>Добавь в пользовательский <code>~/.codex/config.toml</code> и перезапусти клиент.</p>
+          {{template "client-snippet" .Codex}}
+        </details>
+        <details>
+          <summary>DeepSeek Harness Desktop</summary>
+          <p>Добавь элемент в список <code>~/.dsh/profiles/desktop/cordis.patch.yml</code> и перезапусти клиент.</p>
+          {{template "client-snippet" .DSH}}
+        </details>
+        <details>
+          <summary>Claude Desktop</summary>
+          <p>Открой <code>%APPDATA%\Claude\claude_desktop_config.json</code>. Если файл пуст или отсутствует, сохрани пример целиком. Если в нём уже есть настройки, добавь запись <code>engmcp</code> в раздел <code>mcpServers</code> или создай этот раздел.</p>
+          {{template "client-snippet" .Claude}}
+          <p>Полностью закрой Claude Desktop через значок в области уведомлений и запусти снова.</p>
+        </details>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>
+
+{{define "client-snippet"}}
+<div class="client-snippet">
+  <button type="button" class="copy-control" aria-label="Копировать" title="Копировать">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <g class="copy-icon">
+        <path d="M7 6V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"/>
+        <rect x="3" y="6" width="10" height="11" rx="2"/>
+      </g>
+      <path class="check-icon" d="m4 10 4 4 8-9"/>
+    </svg>
+  </button>
+  <pre>{{.}}</pre>
+  <span class="copy-status" role="status"></span>
+</div>
+{{end}}
